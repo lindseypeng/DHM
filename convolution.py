@@ -1,15 +1,14 @@
 import numpy as np
 import cv2
 import math
-import holopy as hp
+#import holopy as hp
 import imutils
 #import tifffile 
 
 
 import matplotlib.pyplot as plt
 
-from skimage.filters import (threshold_otsu, threshold_niblack,
-                             threshold_sauvola)
+from skimage.filters import (threshold_sauvola)
 from skimage.morphology import binary_opening
 from skimage.util import invert
 
@@ -92,7 +91,7 @@ indd=np.arange(1,minN,1)
 for d in dp:
     ind=(d-mind)/steps
     
-    
+
 
     #d0= dp*mag
     #f= (1/dp + 1/d0)**(-1)
@@ -112,27 +111,15 @@ for d in dp:
 
     G=np.fft.fft2(g)
 
-
-    
-    #Metric=np.linalg.norm(np.real(G*H),ord=1)#plane wave is assumed to be a constant amplitude#metric using fourier modulus
-
-    #metricarray=np.append(metricarray,[Metric])
     Rec_image=np.fft.fftshift(np.fft.ifft2(G*H))
-    Metric=np.linalg.norm(Rec_image)#metric using spatial frequencies modulus
-        
-   # Metric=np.log((1+np.abs(G*H)))#focuse metric using the log, self entropy, Patrik Langehanenberg*2007
+   
+  
     amp_rec_image = np.abs(Rec_image)
     
     if ind < 1:
         maxproj = amp_rec_image
         
-    metricarray=np.append(metricarray,[Metric])
-    
-  
-    
-    
-    
-    
+##finding Minimum projection###
     
     for p in indd:
        for j in indd:
@@ -184,6 +171,11 @@ for d in dp:
 # # #
 #hp.show(original)
 #hp.show(imaginary)
+#threeD=threeD.astype(np.float32)
+
+
+
+######################FINDING INFOCUSE XY PLANE#################################
 window_size = 25
 #maxproj = np.array(maxproj*255,dtype=np.uint8)
 maxproj*=255.0/maxproj.max()
@@ -204,29 +196,71 @@ color=cv2.cvtColor(maxproj,cv2.COLOR_GRAY2RGB)
 cnts=cv2.findContours(opening.copy(),cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
 cnts=cnts[0] if imutils.is_cv2() else cnts[1]
 
+#cv2.namedWindow('Image', cv2.WINDOW_NORMAL)
+#cv2.resizeWindow('Image',600,600)   
+#cv2.namedWindow('particle cropped', cv2.WINDOW_NORMAL)
+#cv2.resizeWindow('particle cropped',600,600)
 
 
 #loop over the contours
-for c in cnts:
+for i,c in enumerate (cnts):
     M = cv2.moments(c)
-    cX = int(M["m10"] / M["m00"])
-    cY = int(M["m01"] / M["m00"])
-    cv2.drawContours(color, [c], -1, (0, 0, 255), 1)
-    cv2.ellipse(color,cv2.fitEllipse(c),(0,255,0),2)
-    cv2.circle(color, (cX, cY), 3, (128, 0, 128), -1)
-    cv2.putText(color, "center", (cX - 20, cY - 20),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+    (x,y,w,h) = cv2.boundingRect(c)
+    particle = maxproj[y:y+h,x:x+w]
+    
+    for d in dp:
+        ind=(d-mind)/steps
+        Metric=np.linalg.norm(particle)
+        metricarray=np.append(metricarray,[Metric])
+        
+    plt.figure()
+    start=i*len(dp)
+    end=(i+1)*len(dp)
+    plt.plot(dp,metricarray[start:end])
+    plt.title('Intensity versus distance for particle # %s'%(i+1))
+    #plt.ylabel('entropy')
+    #plt.xlabel('distance')
+    plt.show() 
+    
+##initiate a 3d images for cropped image
+    
 
-cv2.imshow("Image", color)
-cv2.waitKey(0)
+  
+   
+
+#plt.close()   
+    #cX = int(M["m10"] / M["m00"])
+    #cY = int(M["m01"] / M["m00"])
+    #cv2.drawContours(color, [c], -1, (0, 0, 255), 1)#draws contours found using cnts on picture
+    #cv2.ellipse(color,cv2.fitEllipse(c),(0,255,0),2)
+    #cv2.circle(color, (cX, cY), 3, (128, 0, 128), -1)
+    #cv2.rectangle(color,(x,y),(x+w,y+h),(0,255,0),1)
+    #cv2.putText(color, "center", (cX - 20, cY - 20),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+ 
+    #cv2.imshow("Image", color)
+    #cv2.waitKey(0)
+
+    #cv2.imshow('particle cropped', particle)
 
  
- 
- 
+#cv2.destroyAllWindows()
+
+
+###FINDING Z PLANE FOR EACH XY OBJECTS#
+  
+
+    
+    #Metric=np.linalg.norm(np.real(G*H),ord=1)#plane wave is assumed to be a constant amplitude#metric using fourier modulus
+    #Metric=np.linalg.norm(Rec_image)#metric using spatial frequencies modulus
+    # Metric=np.log((1+np.abs(G*H)))#focuse metric using the log, self entropy, Patrik Langehanenberg*2007
+    #metricarray=np.append(metricarray,[Metric])
+    #metricarray=np.append(metricarray,[Metric])
+    
+
 
 	# draw the contour and center of the shape on the image
 
 	# show the image
-
 
 
 
@@ -258,6 +292,3 @@ cv2.waitKey(0)
 #
 #
 #plt.show()
-
-
-
