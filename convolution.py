@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Thu May 25 11:45:54 2017
-
-@author: alinsi
-"""
-
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import cv2
@@ -18,6 +11,7 @@ import matplotlib.pyplot as plt
 
 from skimage.filters import (threshold_sauvola)
 from skimage.morphology import binary_opening
+#from skimage.morphology import binary_closing
 from skimage.util import invert
 
 #load image
@@ -96,19 +90,22 @@ for d in dp:
 ######################FINDING INFOCUSE XY PLANE#################################
 window_size = 25
 #maxproj = np.array(maxproj*255,dtype=np.uint8)
-maxproj*=255.0/maxproj.max()
+maxproj2=maxproj*255.0/maxproj.max()
 
 #binary_global = maxproj > threshold_otsu(maxproj)
 #thresh_niblack = threshold_niblack(maxproj, window_size=window_size, k=0.8)
-thresh_sauvola = threshold_sauvola(maxproj, window_size=window_size, k=0.5, r=128)
+thresh_sauvola = threshold_sauvola(maxproj2, window_size=window_size, k=0.5, r=128)
 
 #binary_niblack = maxproj > thresh_niblack
-binary_sauvola = maxproj > thresh_sauvola
+binary_sauvola = maxproj2 > thresh_sauvola
 
+#opening=binary_closing(invert(binary_sauvola),np.ones((5,5),np.uint8))
+
+#opening2=binary_opening(opening,np.ones((3,3),np.uint8))
 opening=binary_opening(invert(binary_sauvola),np.ones((3,3),np.uint8))
 opening=opening.astype(np.uint8)
-maxproj=maxproj.astype(np.uint8)
-color=cv2.cvtColor(maxproj,cv2.COLOR_GRAY2RGB)
+maxproj2=maxproj2.astype(np.uint8)
+color=cv2.cvtColor(maxproj2,cv2.COLOR_GRAY2RGB)
 
 
 cnts=cv2.findContours(opening.copy(),cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
@@ -116,6 +113,7 @@ cnts=cnts[0] if imutils.is_cv2() else cnts[1]
 
 cXs=[]
 cYs=[]
+speeds=[]
 #loop over the contours
 for i,c in enumerate (cnts):
      M = cv2.moments(c)
@@ -124,19 +122,29 @@ for i,c in enumerate (cnts):
      (x,y,w,h) = cv2.boundingRect(c)
      cXs.append(cX)
      cYs.append(cY)
-     #cv2.drawContours(color, [c], -1, (0, 255, 0), 1)
+     cv2.drawContours(color, [c], -1 , (0, 255, 0), 1)
      #cv2.circle(color, (cX, cY), 1, (255, 255, 255), -1)
-     #cv2.rectangle(color,(x,y),(x+w,y+h),(0,255,255),1)
-     #cv2.putText(color, "center", (cX - 20, cY - 20),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+     cv2.rectangle(color,(x,y),(x+w,y+h),(0,255,255),2)
+     cv2.putText(color, "# {}".format(i), (cX - 20, cY - 20),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+     #######calculate intensity changes######
+     localmaxproj = maxproj[y:y+h+h,x:x+w+w]
+     peak=localmaxproj.max()
+     valley=localmaxproj.min()
+     speed=(peak-valley)/(h+w)
+     speeds.append(speed)
+     
      
      for d in dp:
         ind=(d-mind)/steps
         particle = threeD[ind,y:y+h,x:x+w]
         Metric=np.linalg.norm(particle)
-        print Metric
         metricarray=np.append(metricarray,[Metric])
         
 cv2.imshow("labeled",color)
+
+
+
+
 metricarray2=metricarray.reshape(len(cnts),len(dp))
 
 #the minimum of rows is axis=1, col is axis=0
@@ -147,16 +155,6 @@ minimumvalue=metricarray2.min(axis=1)
 minimumdp=np.argmin(metricarray2,axis=1)
 ranges = np.arange(0, len(minimumdp), 1)
 
-for i in ranges:
-    print ("The focused distance for particle #{} is {} mm ".format(i+1,minimumdp[i]))
-
-fig = plt.figure()
-ax = fig.add_subplot(111, projection ='3d')
-
-ax.scatter(cXs,cYs,minimumdp, c='r', marker='o')
-
-ax.set_xlabel('X Label')
-ax.set_ylabel('Y Label')
-ax.set_zlabel('Z lebel')
-
+plt.plot(ranges,speeds)
 plt.show()
+
