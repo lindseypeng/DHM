@@ -1,0 +1,229 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Sep 18 15:37:06 2017
+
+@author: alinsi
+"""
+
+import tifffile 
+import timeit
+import numpy as np
+import math
+import cv2
+from skimage.filters import threshold_sauvola
+from skimage.morphology import binary_opening
+from skimage.util import invert
+import imutils
+import pandas as pd
+
+start_time=timeit.default_timer()
+######################################################################
+averagedframe=20##this is only for normallization
+capturedframe=5##you cant choose 3 or 4 as it will think its 3 channel of colors
+placeread="/home/alinsi/Desktop/aug11lakeD1ms/Pos0/img_0000000{}_Default_000.tif"
+save_path="/home/alinsi/Desktop/aug11lakeD1ms/Pos0/MIP/MIPelapsed.tif"
+placesave="/home/alinsi/Desktop/aug11lakeD1ms/Pos0/reconstructed/reconstruct{}.tif"
+averframe=range(averagedframe)
+rangenum=range(capturedframe)
+minN = 1024
+
+window_size = 25##for thresholding window
+##enter some parameters for recontruction##
+lambda0 = 0.000488
+delx=5.32/1024
+dely=6.66/1280
+i=complex(0,1)
+pi=math.pi
+
+maxd=54#looping of distance in mm from object to CCD , maximum is 22cm, 220mm,minmum is 60mm6
+mind=30
+steps=1#6-12+30
+
+
+
+##########initialize empty arrays and indexing####################
+indd=np.arange(1,minN,1)
+##index the number of reconstructing distances
+imageslices=int((maxd-mind)/steps)#when steps are not in intergers you must convert the index to int
+slicerange = np.arange(0, imageslices, 1)    
+##initializaitng empty arrays
+threeD=np.empty((imageslices,minN,minN))##this is the stack of reconstructed images from a single frame
+##captured frames?? or imageslices
+newrawstack=np.zeros((imageslices,minN,minN))## this is reference point for finding dp, its a copy of threeD
+minprojstack=np.empty((capturedframe,minN,minN))
+threeDPositions=pd.DataFrame()
+
+
+##############calculate Transfer Function only once #############
+   ###smart adaptives, this need to be manually entered or using computer vision to detect##########
+
+
+dp = np.arange(mind, maxd, steps)
+
+####################################################################
+
+
+#distanced looping step
+
+xmax=minN*delx/2
+ymax=minN*dely/2
+
+nx = np.arange (-minN/2,minN/2,1)
+ny = np.arange (-minN/2,minN/2,1)
+
+X=nx*delx
+Y=ny*dely
+
+[XX,YY]=np.meshgrid(X,Y)
+#########transfer function only needs to be calculated once for everything ##################
+GG=np.zeros((imageslices,1024,1024),dtype=np.complex)
+
+for d in dp:
+    ind=int((d-mind)/steps)
+    num = np.exp(-i*2*pi/lambda0*np.sqrt((d**2+XX**2+YY**2)))
+    den = np.sqrt(d**2+XX**2+YY**2)
+    g=i/lambda0*num/den#g is the impulse response of propagation
+    GG[ind,:,:]=np.fft.fft2(g)
+#######################normalize image###########################3
+stackss=np.float32(np.zeros((minN,minN)))
+##remember to use the number of frames for all the captured images for good average affect
+##this may differ from the number of frames you actually want to reconstruct
+for f in averframe:
+    f2="{:02d}".format(f)
+    read_path=placeread.format((f2))
+    
+    h = (tifffile.imread(read_path))
+    h1 = np.array(h).astype(np.float32)
+    (Nx,Ny)= h1.shape[:2]
+    minN = min(Nx,Ny)
+    h1 = h1[:minN,:minN]
+    
+    stackss +=h1
+
+averagestack=stackss/averagedframe
+
+###############################Reconstruction################################################################
+##################################################################################################################
+
+for f in rangenum:##looping through every single image##
+    
+    f2="{:02d}".format(f)
+    read_path=placeread.format((f2))
+    save_path2=placesave.format((f2))
+    q = (tifffile.imread(read_path))
+        
+    q1 = np.array(q).astype(np.float32)
+
+    q2 = q1[:minN,:minN]
+    q3 = q2/averagestack
+    
+    hh = np.array(q3).astype(np.float32)
+    
+    
+    ###if needed pre treat this stack for gpu and save into specific location
+    
+    H=np.fft.fft2(hh)
+    ###recontruction~~~~~~~~####
+    for d in dp:
+        ind=int((d-mind)/steps)
+#        num = np.exp(-i*2*pi/lambda0*np.sqrt((d**2+XX**2+YY**2)))
+#        den = np.sqrt(d**2+XX**2+YY**2)
+#        g=i/lambda0*num/den#g is the impulse response of propagation
+#        G=np.fft.fft2(g)
+        #G=GG[ind]       
+        Rec_image=np.fft.fftshift(np.fft.ifft2(GG[ind]*H))
+        amp_rec_image = np.abs(Rec_image)
+        threeD[ind,:,:]=amp_rec_image.astype(np.float32)
+    
+    ##try saving an image here to test if the algorithm is workng##
+    #tifffile.imsave(save_path2,threeD.astype(np.float32))
+######DETECTION#############################################################################
+    ##initialize the first reconstructed picture, 
+    ##you can then find the minimum intensity by comparing through all the reconstructed images###
+    maxproj = threeD[0,:,:].copy()
+    
+     
+    for slice in slicerange:
+        amp_rec_image=threeD[slice].copy()
+    ##can i vectorize the operations here??###
+        for p in indd:
+            for j in indd:
+                  if maxproj[p][j] > amp_rec_image[p][j]:
+                      maxproj[p][j] = amp_rec_image[p][j]
+    
+    
+    
+    ##threshold to find 
+    
+
+    maxproj*=255.0/maxproj.max()
+    ###
+    tifffile.imsave(save_path2,maxproj.astype(np.float32))
+
+    thresh_sauvola = threshold_sauvola(maxproj, window_size=window_size, k=0.1, r=128)
+    
+    binary_sauvola = maxproj > thresh_sauvola
+    
+    opening=binary_opening(invert(binary_sauvola),np.ones((3,3),np.uint8))
+    opening=opening.astype(np.uint8)
+    
+
+    minprojstack[f,:,:]=opening
+
+    maxproj=maxproj.astype(np.uint8)
+    ##save binarized MIP###################
+    
+    
+    ###
+    color=cv2.cvtColor(maxproj,cv2.COLOR_GRAY2RGB)
+#    
+    cnts=cv2.findContours(opening.copy(),cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    cnts=cnts[0] if imutils.is_cv2() else cnts[1]
+#    ##
+    cXs=[]#a list of center x position of particles
+    cYs=[]#a list of center y position of particles
+   # metricarray=[]
+   
+ #i need to create a 3d array for recording positions   
+    threeDPosition=np.empty((len(rangenum),len(cnts),3))
+#    #
+    index=range(len(cnts))
+    ###loop over the contours
+    for k,c in enumerate (cnts):
+         M = cv2.moments(c)
+         cX = int(M["m10"] / M["m00"])
+         cY = int(M["m01"] / M["m00"])
+         (x,y,w,h) = cv2.boundingRect(c)
+#       
+         metricarray=[]  
+         
+         for d2 in dp:##becareful d was used before, so use d2, ind was also used, use ind2
+             ind2=int((d2-mind)/steps)
+             particle = newrawstack[ind2,y:y+h,x:x+w]
+#                        
+             Metric=np.linalg.norm(particle)#CALCULATE AREA INTENSITY OF THE PARTICULAR PARTICLES IN EACH RECONSTRUCTION STEP
+             #print ("The norm iof particle {} at distance{}mm is {} ".format(i,d,Metric))
+             metricarray=np.append(metricarray,[Metric])# A LIST OF INTENSITY OF THE OBJECT OF INTERST AT EACH RECONSTRUCTION STEP
+#       
+         minimumvalue=min(metricarray)
+         minimumindex=np.argmin(metricarray)
+         minimumdp=dp[minimumindex]
+         #print ('the minimum value of {} is {} at index {} and distance {}'.format(i,minimumvalue,minimumindex,minimumdp))
+         threeDPosition[f,k,:]=cX,cY,minimumdp
+         
+         threeDposition=pd.DataFrame( {'frame':f,'particle': k, 'cX': cX, 'cY': cY, 'mindp': minimumdp},index=[str(f)])
+         threeDPositions=threeDPositions.append(threeDposition,ignore_index=True)
+         
+         
+    elapsed = timeit.default_timer()-start_time
+    print ('the elapsed time for frame {}binarized and positioning is {}s').format(f,elapsed)
+
+threeDPositions.to_csv('/home/alinsi/Desktop/aug11lakeD1ms/Pos0/threeDPositions.csv')
+tifffile.imsave(save_path,minprojstack.astype(np.float32))
+##now check if reconstruction was within focus distance by saving only one sampel##
+tifffile.imsave(save_path2,threeD.astype(np.float32))
+
+
+elapsed2 = timeit.default_timer()-start_time
+print ('the elapsed time is {}s').format(elapsed2)
