@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+##!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """
 Created on Mon Sep 18 15:37:06 2017
@@ -17,7 +17,7 @@ from skimage.util import invert
 import imutils
 import pandas as pd
 start=timeit.default_timer()
-start_time=timeit.default_timer()
+
 ######################################################################
 averagedframe=20##this is only for normallization
 capturedframe=1##you cant choose 3 or 4 as it will think its 3 channel of colors
@@ -43,7 +43,7 @@ steps=2#6-12+30
 
 
 ##########initialize empty arrays and indexing####################
-indd=np.arange(1,minN,1)
+
 ##index the number of reconstructing distances
 imageslices=int((maxd-mind)/steps)#when steps are not in intergers you must convert the index to int
 slicerange = np.arange(0, imageslices, 1)    
@@ -58,7 +58,7 @@ threeDPositions=pd.DataFrame()
 ##############calculate Transfer Function only once #############
    ###smart adaptives, this need to be manually entered or using computer vision to detect##########
 
-
+start_time=timeit.default_timer()
 dp = np.arange(mind, maxd, steps)
 
 ####################################################################
@@ -76,18 +76,54 @@ X=nx*delx
 Y=ny*dely
 
 [XX,YY]=np.meshgrid(X,Y)
+
+
+
 #########transfer function only needs to be calculated once for everything ##################
-GG=np.zeros((imageslices,1024,1024),dtype=np.complex)
+GG2=np.zeros((imageslices,minN,minN),dtype=np.complex)
+#GG2=np.zeros((imageslices,minN,minN),dtype=np.complex)
+#
+#start_time=timeit.default_timer()
+#
+#
+#ONES=np.ones((imageslices,minN,minN))
+#XX2=(ONES*(np.square(XX))).transpose()
+#YY2=(ONES*(np.square(YY))).transpose()
+#DP=np.square(np.array(dp).reshape((1,12)))
+##elapsed = timeit.default_timer()-start_time
+##print ('time for initializing and squaring  {}').format(elapsed)
+##start_time=timeit.default_timer()
+#
+#
+#inner=np.sqrt(DP+XX2+YY2)
+#
+##elapsed = timeit.default_timer()-start_time
+##print ('time for calculating inner  {}').format(elapsed)
+##start_time=timeit.default_timer()
+#
+#
+#g=i/lambda0*np.exp(-i*2*pi/lambda0*inner)/inner
+#
+##elapsed = timeit.default_timer()-start_time
+##print ('time for calculating transfer  {}').format(elapsed)
+##start_time=timeit.default_timer()
+#
+#GG[:,:,:]=np.fft.fft2(g).transpose()
+#elapsed = timeit.default_timer()-start_time
+#print ('time for transferfunction without loop  {}').format(elapsed)
+#start_time=timeit.default_timer()
+
+
 
 for d in dp:
     ind=int((d-mind)/steps)
     num = np.exp(-i*2*pi/lambda0*np.sqrt((d**2+XX**2+YY**2)))
     den = np.sqrt(d**2+XX**2+YY**2)
     g=i/lambda0*num/den#g is the impulse response of propagation
-    GG[ind,:,:]=np.fft.fft2(g)
+    GG2[ind,:,:]=np.fft.fft2(g)
 
 elapsed = timeit.default_timer()-start_time
-print ('time for transfer function is {}').format(elapsed)
+print ('time for transfer function with for loop is {}').format(elapsed)
 start_time=timeit.default_timer()
 #######################normalize image###########################3
 stackss=np.float32(np.zeros((minN,minN)))
@@ -112,6 +148,7 @@ start_time=timeit.default_timer()
 ###############################Reconstruction################################################################
 ##################################################################################################################
 
+
 for f in rangenum:##looping through every single image##
     
     f2="{:02d}".format(f)
@@ -133,12 +170,7 @@ for f in rangenum:##looping through every single image##
     ###recontruction~~~~~~~~####
     for d in dp:
         ind=int((d-mind)/steps)
-#        num = np.exp(-i*2*pi/lambda0*np.sqrt((d**2+XX**2+YY**2)))
-#        den = np.sqrt(d**2+XX**2+YY**2)
-#        g=i/lambda0*num/den#g is the impulse response of propagation
-#        G=np.fft.fft2(g)
-        #G=GG[ind]       
-        Rec_image=np.fft.fftshift(np.fft.ifft2(GG[ind]*H))
+        Rec_image=np.fft.fftshift(np.fft.ifft2(GG2[ind]*H))
         amp_rec_image = np.abs(Rec_image)
         threeD[ind,:,:]=amp_rec_image.astype(np.float32)
         
@@ -146,33 +178,14 @@ for f in rangenum:##looping through every single image##
     elapsed = timeit.default_timer()-start_time
     print ('time for reconstruction a stack is {}').format(elapsed)
     start_time=timeit.default_timer()
-        
+    
+    ########maxproj##########################
     maxproj=np.ndarray.min(threeD,axis=0)
     
     elapsed = timeit.default_timer()-start_time
     print ('time for vectorization is{}').format(elapsed)
 
-    ##try saving an image here to test if the algorithm is workng##
-    #tifffile.imsave(save_path2,threeD.astype(np.float32))
-######DETECTION#############################################################################
-    ##initialize the first reconstructed picture, 
-    ##you can then find the minimum intensity by comparing through all the reconstructed images###
-#    maxproj = threeD[0,:,:].copy()
-#    
-#    
-#    for slice in slicerange:
-#        amp_rec_image=threeD[slice].copy()
-#    ##can i vectorize the operations here??###
-#        for p in range(amp_rec_image.shape[0]):
-#            for j in range(amp_rec_image.shape[0]):
-#                  if maxproj[p][j] > amp_rec_image[p][j]:
-#                      maxproj[p][j] = amp_rec_image[p][j]
-#    
-#    
-#    
-#    
-#    elapsed = timeit.default_timer()-start_time
-#    print ('time for minimum intensity projection {}').format(elapsed)
+  
 
     ##threshold to find 
     maxproj*=255.0/maxproj.max()
@@ -230,15 +243,15 @@ for f in rangenum:##looping through every single image##
              #print ("The norm iof particle {} at distance{}mm is {} ".format(i,d,Metric))
              metricarray=np.append(metricarray,[Metric])# A LIST OF INTENSITY OF THE OBJECT OF INTERST AT EACH RECONSTRUCTION STEP
         
-         if k < 1:
-             elapsed = timeit.default_timer()-start_time
-             start_time2=timeit.default_timer()
-             print ('time for looping for {} center is {}').format(k,elapsed)
-         else:
-             elapsed=timeit.default_timer()-start_time2
-             start_time2=timeit.default_timer()
-             print ('time for looping for {} center is {}').format(k,elapsed)
-       
+#         if k < 1:
+#             elapsed = timeit.default_timer()-start_time
+#             start_time2=timeit.default_timer()
+#             print ('time for looping for {} center is {}').format(k,elapsed)
+#         else:
+#             elapsed=timeit.default_timer()-start_time2
+#             start_time2=timeit.default_timer()
+#             print ('time for looping for {} center is {}').format(k,elapsed)
+#       
          
          
         
@@ -261,6 +274,3 @@ threeDPositions.to_csv('/home/alinsi/Desktop/aug11lakeD1ms/Pos0/threeDPositions.
 tifffile.imsave(save_path,minprojstack.astype(np.uint8))
 ##now check if reconstruction was within focus distance by saving only one sampel##
 #tifffile.imsave(save_path2,threeD.astype(np.float32))
-
-final = timeit.default_timer()-start
-print ('the elapsed time for all detection calculations is {}').format(final)
