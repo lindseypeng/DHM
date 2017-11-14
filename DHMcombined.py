@@ -1,4 +1,4 @@
-##!/usr/bin/env python2
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """
 Created on Mon Sep 18 15:37:06 2017
@@ -6,6 +6,9 @@ Created on Mon Sep 18 15:37:06 2017
 @author: alinsi
 """
 
+
+
+################################################
 import tifffile 
 import timeit
 import numpy as np
@@ -16,19 +19,50 @@ from skimage.morphology import binary_opening
 from skimage.util import invert
 import imutils
 import pandas as pd
+
+#import sys
+#if len(sys.argv) !=2: 
+#placeread=str(sys.argv[2])
+
 start=timeit.default_timer()
+###################################################################
+
+#
+#import sys
+#
+#if len(sys.argv) <2:
+#    print"at least 2 arguments needed"
+#    sys.exit(1)
+#else:
+#    folderread=sys.argv[0]
+#    foldersave=sys.argv[1]
+
+folderread="/home/alinsi/Desktop/Pos0"
+foldersave="/home/alinsi/Desktop/Pos0"
+#    for x in sys.argv:
+#        print "Argument:{}".format(x)
+
 
 ######################################################################
-averagedframe=20##this is only for normallization
-capturedframe=1##you cant choose 3 or 4 as it will think its 3 channel of colors
-placeread="/home/alinsi/Desktop/aug11lakeD1ms/Pos0/img_0000000{}_Default_000.tif"
-save_path="/home/alinsi/Desktop/aug11lakeD1ms/Pos0/MIP/MIPelapsed.tif"
-placesave="/home/alinsi/Desktop/aug11lakeD1ms/Pos0/reconstructed/reconstruct{}.tif"
-averframe=range(averagedframe)
-rangenum=range(capturedframe)
+averagedframe=10##this is only for normallization--whats appropriate for normalization?
+
+capturedframei=0##you cant choose 3 or 4 as it will think its 3 channel of colors
+capturedframef=503
+
+placeread=folderread+"/img_000000{}_Default_000.tif"
+save_path=foldersave+"/MIPelapsed{}.tif"
+placesave=foldersave+"/reconstruct{}.tif"
+
+
+rangenum=range(capturedframei,capturedframef+1)
+
+
+
+
+
 minN = 1024
 
-window_size = 25##for thresholding window
+window_size = 101##for thresholding window
 ##enter some parameters for recontruction##
 lambda0 = 0.000488
 delx=5.32/1024
@@ -36,12 +70,11 @@ dely=6.66/1280
 i=complex(0,1)
 pi=math.pi
 
-maxd=54#looping of distance in mm from object to CCD , maximum is 22cm, 220mm,minmum is 60mm6
-mind=30
-steps=2#6-12+30
-
-
-
+maxd=52#looping of distance in mm from object to CCD , maximum is 22cm, 220mm,minmum is 60mm6=
+mind=35
+steps=1#5
+###0=yes, 1=No normalizaiton step###
+normalization=1
 ##########initialize empty arrays and indexing####################
 
 ##index the number of reconstructing distances
@@ -50,8 +83,16 @@ slicerange = np.arange(0, imageslices, 1)
 ##initializaitng empty arrays
 threeD=np.empty((imageslices,minN,minN))##this is the stack of reconstructed images from a single frame
 ##captured frames?? or imageslices
-newrawstack=np.zeros((imageslices,minN,minN))## this is reference point for finding dp, its a copy of threeD
-minprojstack=np.empty((capturedframe,minN,minN))
+# this is reference point for finding dp, its a copy of threeD
+
+interval=10
+
+intermediate=int(averagedframe/interval)
+n=1
+
+
+minprojstack=np.empty((interval,minN,minN))
+#minprojstack=np.empty((len(rangenum),minN,minN))
 threeDPositions=pd.DataFrame()
 
 
@@ -80,78 +121,52 @@ Y=ny*dely
 
 
 #########transfer function only needs to be calculated once for everything ##################
-GG2=np.zeros((imageslices,minN,minN),dtype=np.complex)
-#GG2=np.zeros((imageslices,minN,minN),dtype=np.complex)
-#
-#start_time=timeit.default_timer()
-#
-#
-#ONES=np.ones((imageslices,minN,minN))
-#XX2=(ONES*(np.square(XX))).transpose()
-#YY2=(ONES*(np.square(YY))).transpose()
-#DP=np.square(np.array(dp).reshape((1,12)))
-##elapsed = timeit.default_timer()-start_time
-##print ('time for initializing and squaring  {}').format(elapsed)
-##start_time=timeit.default_timer()
-#
-#
-#inner=np.sqrt(DP+XX2+YY2)
-#
-##elapsed = timeit.default_timer()-start_time
-##print ('time for calculating inner  {}').format(elapsed)
-##start_time=timeit.default_timer()
-#
-#
-#g=i/lambda0*np.exp(-i*2*pi/lambda0*inner)/inner
-#
-##elapsed = timeit.default_timer()-start_time
-##print ('time for calculating transfer  {}').format(elapsed)
-##start_time=timeit.default_timer()
-#
-#GG[:,:,:]=np.fft.fft2(g).transpose()
-#elapsed = timeit.default_timer()-start_time
-#print ('time for transferfunction without loop  {}').format(elapsed)
-#start_time=timeit.default_timer()
-
+GG2=np.zeros((imageslices,minN,minN),dtype=np.complex64)
 
 
 for d in dp:
     ind=int((d-mind)/steps)
-    num = np.exp(-i*2*pi/lambda0*np.sqrt((d**2+XX**2+YY**2)))
+    
+    start_time=timeit.default_timer()
     den = np.sqrt(d**2+XX**2+YY**2)
+    num = np.exp(-i*2*pi/lambda0*den)
     g=i/lambda0*num/den#g is the impulse response of propagation
     GG2[ind,:,:]=np.fft.fft2(g)
 
-elapsed = timeit.default_timer()-start_time
-print ('time for transfer function with for loop is {}').format(elapsed)
-start_time=timeit.default_timer()
 #######################normalize image###########################3
-stackss=np.float32(np.zeros((minN,minN)))
+
+
+if normalization==0:
+    
+    stackss=np.float32(np.zeros((minN,minN)))
 ##remember to use the number of frames for all the captured images for good average affect
 ##this may differ from the number of frames you actually want to reconstruct
-for f in averframe:
-    f2="{:02d}".format(f)
-    read_path=placeread.format((f2))
-    
-    h = (tifffile.imread(read_path))
-    h1 = np.array(h).astype(np.float32)
-    (Nx,Ny)= h1.shape[:2]
-    minN = min(Nx,Ny)
-    h1 = h1[:minN,:minN]
-    
-    stackss +=h1
+    for f in rangenum:
+        f2="{:03d}".format(f)
+        read_path=placeread.format((f2))
 
-averagestack=stackss/averagedframe
-elapsed = timeit.default_timer()-start_time
-print ('time for normalization is {}').format(elapsed)
-start_time=timeit.default_timer()
+        
+        h = (tifffile.imread(read_path))
+        h1 = np.array(h).astype(np.float32)
+        (Nx,Ny)= h1.shape[:2]
+        minN = min(Nx,Ny)
+        h1 = h1[:minN,:minN]
+        
+        stackss +=h1
+    
+    averagestack=stackss/(averagedframe)
+    
+    
+else:
+    averagestack=1
 ###############################Reconstruction################################################################
-##################################################################################################################
+####################every 20 frames at a time######################################################################
 
+for f in rangenum:
 
-for f in rangenum:##looping through every single image##
-    
-    f2="{:02d}".format(f)
+    f2="{:03d}".format(f)
+    ##index for frames in threed positions##
+    frameindex=(f-rangenum[0])%interval##################INTERVAL10
     read_path=placeread.format((f2))
     save_path2=placesave.format((f2))
     q = (tifffile.imread(read_path))
@@ -174,16 +189,11 @@ for f in rangenum:##looping through every single image##
         amp_rec_image = np.abs(Rec_image)
         threeD[ind,:,:]=amp_rec_image.astype(np.float32)
         
-        
-    elapsed = timeit.default_timer()-start_time
-    print ('time for reconstruction a stack is {}').format(elapsed)
-    start_time=timeit.default_timer()
-    
-    ########maxproj##########################
+    tifffile.imsave(save_path2,threeD.astype(np.float32))  ##stop this  
+
+#    
+#    ########maxproj##########################
     maxproj=np.ndarray.min(threeD,axis=0)
-    
-    elapsed = timeit.default_timer()-start_time
-    print ('time for vectorization is{}').format(elapsed)
 
   
 
@@ -193,84 +203,74 @@ for f in rangenum:##looping through every single image##
 #
 
     start_time=timeit.default_timer()
-    thresh_sauvola = threshold_sauvola(maxproj, window_size=window_size, k=0.1, r=128)
+    thresh_sauvola = threshold_sauvola(maxproj, window_size=window_size, k=0.8, r=180)
     
     binary_sauvola = maxproj > thresh_sauvola
     
-    opening=binary_opening(invert(binary_sauvola),np.ones((3,3),np.uint8))
+    opening=binary_opening(invert(binary_sauvola),np.ones((1,1),np.uint8))
     opening=opening.astype(np.uint8)
     
 
-    minprojstack[f,:,:]=opening
+    minprojstack[frameindex,:,:]=opening
 
     maxproj=maxproj.astype(np.uint8)
     ##save binarized MIP###################
-    elapsed = timeit.default_timer()-start_time
-    print ('time for minimum binarization {}').format(elapsed)
-    start_time=timeit.default_timer()
-    
+
     ###
     color=cv2.cvtColor(maxproj,cv2.COLOR_GRAY2RGB)
 #    
     cnts=cv2.findContours(opening.copy(),cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
     cnts=cnts[0] if imutils.is_cv2() else cnts[1]
-#    ##
-    elapsed = timeit.default_timer()-start_time
-    print ('time for contouring all detections {}').format(elapsed)
+
     start_time=timeit.default_timer()
-    cXs=[]#a list of center x position of particles
-    cYs=[]#a list of center y position of particles
+    #cXs=[]#a list of center x position of particles
+    #cYs=[]#a list of center y position of particles
    # metricarray=[]
    
  #i need to create a 3d array for recording positions   
-    threeDPosition=np.empty((len(rangenum),len(cnts),3))
-#    #
+#    threeDPosition=np.empty((len(rangenum),len(cnts),3))
+    threeDPosition=np.empty((interval,len(cnts),3))
+#    #index for particles identified
     index=range(len(cnts))
     ###loop over the contours
     for k,c in enumerate (cnts):
          M = cv2.moments(c)
-         cX = int(M["m10"] / M["m00"])
-         cY = int(M["m01"] / M["m00"])
          (x,y,w,h) = cv2.boundingRect(c)
-#       
+         if w > 1 & h > 1:
+             cX = int(M["m10"] / M["m00"])
+             cY = int(M["m01"] / M["m00"])
+         else:
+             (cX,cY,w,h) = cv2.boundingRect(c)
          metricarray=[]  
          
          for d2 in dp:##becareful d was used before, so use d2, ind was also used, use ind2
              ind2=int((d2-mind)/steps)
-             particle = newrawstack[ind2,y:y+h,x:x+w]
+             
+             particle = threeD[ind2,y:y+h,x:x+w]
 #                        
              Metric=np.linalg.norm(particle)#CALCULATE AREA INTENSITY OF THE PARTICULAR PARTICLES IN EACH RECONSTRUCTION STEP
              #print ("The norm iof particle {} at distance{}mm is {} ".format(i,d,Metric))
              metricarray=np.append(metricarray,[Metric])# A LIST OF INTENSITY OF THE OBJECT OF INTERST AT EACH RECONSTRUCTION STEP
-        
-#         if k < 1:
-#             elapsed = timeit.default_timer()-start_time
-#             start_time2=timeit.default_timer()
-#             print ('time for looping for {} center is {}').format(k,elapsed)
-#         else:
-#             elapsed=timeit.default_timer()-start_time2
-#             start_time2=timeit.default_timer()
-#             print ('time for looping for {} center is {}').format(k,elapsed)
-#       
-         
-         
-        
-        
+ 
+
          minimumvalue=min(metricarray)
          minimumindex=np.argmin(metricarray)
          minimumdp=dp[minimumindex]
          #print ('the minimum value of {} is {} at index {} and distance {}'.format(i,minimumvalue,minimumindex,minimumdp))
-         threeDPosition[f,k,:]=cX,cY,minimumdp
          
-         threeDposition=pd.DataFrame( {'frame':f,'particle': k, 'cX': cX, 'cY': cY, 'mindp': minimumdp},index=[str(f)])
-         threeDPositions=threeDPositions.append(threeDposition,ignore_index=True)
-        
+         threeDPosition[frameindex,k,:]=cX,cY,minimumdp
          
-         
-    elapsed = timeit.default_timer()-start_time
-    print ('the elapsed time for all detection calculations is {}').format(elapsed)
+         threeDpositions=pd.DataFrame( {'frame':f,'particle': k, 'cX': cX, 'cY': cY, 'mindp': minimumdp},index=[str(f)])
+         threeDPositions=threeDPositions.append(threeDpositions,ignore_index=True)
 
-threeDPositions.to_csv('/home/alinsi/Desktop/aug11lakeD1ms/Pos0/threeDPositions.csv')
-tifffile.imsave(save_path,minprojstack.astype(np.uint8))
-##now check if reconstruction was within focus distance by saving only one sampel##
-#tifffile.imsave(save_path2,threeD.astype(np.float32))
+    if ((f+1)%interval==0):
+        threeDPositions.to_csv('/home/alinsi/Desktop/Pos0/threeDPositions{}.csv'.format(n))
+        f3="{:03d}".format(n)
+        savepath=save_path.format((f3))
+        tifffile.imsave(savepath,minprojstack.astype(np.float32))
+        minprojstack=np.empty((interval,minN,minN))#reset minprojstack
+        threeDPositions=pd.DataFrame()#reset 3d posiitions frame
+        threeDPosition=np.empty((interval,len(cnts),3))#resetmin
+        n=n+1
+    else:
+        pass
