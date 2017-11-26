@@ -137,51 +137,40 @@ for ii in range(grids):
             xcount=dely[dely['cX'].between(xstar,xend,inclusive=True)]
             ycount=xcount[xcount['cY'].between(ystar,yend,inclusive=True)]
             zcount=(ycount[ycount['mindp'].between(zstar,zend,inclusive=True)])
+            zcount['sparsity']=sparsity
             finalcount=len(zcount)
             sparsity=finalcount/len(dely)
             sparsities.append(sparsity)
             threeDPositions2=threeDPositions2.append(zcount)
-            print('the final count, delylength and sparsity is {}, {}, {}'.format(len(dely),finalcount,np.float32(sparsity)))
             zstar=zend
         ystar=yend
     xstar=xend
-#            zcount['sparsities']=sparsity
-#            dely2=dely.merge(zcount,how='right')
+
             ##add the spasity for all these items ##
             ###assign sparsities to particular rane so you need the range of x,y,and z to be sored##
             #sparsitygrid=pd.DataFrame({'sparsity':[sparsity],'xi':[xstar],'xf':[xend],'yi':[ystar],'yf':[yend],'zi':[zstar],'zf':[zend]})      
             ##or assign sparsities to each particles and hence give colors based on that##
             ##the colormap will map the color based on the third variable:sparsities#
-#            print('xstar: {}, x end: {}, ystar: {}, yend:{}, zstar: {}, zend: {}'.format(xstar,xend,ystar,yend,zstar,zend))
-#            print('the count of x,y,and final are {},{},{}'.format(len(xcount),len(ycount),(finalcount)))    
-#            print(zcount)
-    #            xcount=dely[(dely['cX']>=xstar) & (dely['cX']<xend)]
-            #ycount=xcount[(xcount['cY']>=ystar) & (xcount['cY']<yend)]
-            #zcount=ycount[(ycount['mindp']>=zstar) & (ycount['mindp']<zend)]
-#            print('the final count, delylength and sparsity is {}, {}, {}'.format(len(dely),finalcount,np.float32(sparsity)))
-#                zcount['xstar']=xstar
-#            zcount['xend']=xend
-#            zcount['ystar']=ystar
-#            zcount['yend']=yend
-#            zcount['zstar']=zstar
-#            zcount['zend']=zend
+
 rangeofspar=np.unique(np.array(sparsities))
 ##assign sparsities to regions in matplot lib##
 ##assign color to sparsities###
-#import matplotlib.colors as colors
-#import matplotlib.cm as cm
-#
-#norm = colors.Normalize(vmin=min(np.array(sparsities)), vmax=max(np.array(sparsities)))
-#f2rgb = cm.ScalarMappable(norm=norm, cmap=cm.get_cmap('RdYlGn'))
-#
-#def f2hex(f2rgb, f):
-#    rgb = f2rgb.to_rgba(f)[:3]#change colormap f2rgb to rgba color, where a is opacity
-#    return '#%02x%02x%02x' % tuple([255*fc for fc in rgb])##scaling values from 0 to 1 back to 0 to 255
-#
-###create a list, right column is sparsity, left column is color in hex values
-#sparcolors=pd.DataFrame()
-#for spar in rangeofspar:
-#    color=f2hex(f2rgb,spar)
+import matplotlib.colors as colors
+import matplotlib.cm as cm
+
+norm = colors.Normalize(vmin=min(np.array(sparsities)), vmax=max(np.array(sparsities)))
+f2rgb = cm.ScalarMappable(norm=norm, cmap=cm.get_cmap('RdYlGn'))
+
+def f2hex(f2rgb, f):
+    rgb = f2rgb.to_rgba(f)[:3]#change colormap f2rgb to rgba color, where a is opacity
+    return '#%02x%02x%02x' % tuple([255*fc for fc in rgb])##scaling values from 0 to 1 back to 0 to 255
+
+##create a list, right column is sparsity, left column is color in hex values
+sparcolors=pd.DataFrame()
+for spar in rangeofspar:
+    color=f2hex(f2rgb,spar)
+    print('spar and color is {},{}'.format(spar,color))
+    threeDPositions2['color']=np.where(threeDPositions2['sparsity']==spar,color,0)
 #    sparcolor=pd.DataFrame({'sparsity':[spar],'color':[color]})
 #    sparcolors.append(sparcolor)
 #    
@@ -192,17 +181,17 @@ rangeofspar=np.unique(np.array(sparsities))
 #print f2hex(f2rgb, -13.5)  #   gives #a60126  ie, dark red
 #print f2hex(f2rgb, 85.5)   #   gives #016937  ie, dark green with so
 ################################################
-startingframes=(np.array(dely.frame)).min()
-endingframes=(np.array(dely.frame)).max()
+startingframes=(np.array(threeDPositions2.frame)).min()
+endingframes=(np.array(threeDPositions2.frame)).max()
 rangenum=range(int(startingframes),int(endingframes))
 fig = plt.figure()
 ax = fig.add_subplot(111, projection ='3d')
 ax.set_xlabel('x (mm)')
 ax.set_ylabel('y (mm)')
 ax.set_zlabel('z (mm)')
-ax.set_xlim3d([np.min(dely.cX)*0.0052, np.max(dely.cX)*0.0052])
-ax.set_ylim3d([np.min(dely.cY)*0.0052, np.max(dely.cY)*0.0052])
-ax.set_zlim3d([np.min(dely.mindp), np.max(dely.mindp)])
+ax.set_xlim3d([np.min(threeDPositions2.cX)*0.0052, np.max(threeDPositions2.cX)*0.0052])
+ax.set_ylim3d([np.min(threeDPositions2.cY)*0.0052, np.max(threeDPositions2.cY)*0.0052])
+ax.set_zlim3d([np.min(threeDPositions2.mindp), np.max(threeDPositions2.mindp)])
 #plt.pcolor()
 #
 plt.ion()
@@ -214,10 +203,12 @@ while f<9:
     for f in (rangenum):
         
         f2=f+1
-        cXs=np.array(dely.loc[dely.frame==f2,'cX'])
-        cYs=np.array(dely.loc[dely.frame==f2,'cY'])
-        minimumdp=np.array(dely.loc[dely.frame==f2,'mindp'])
-        ax.scatter(cXs*0.0052,cYs*0.0052,minimumdp*0.04*0.0052, c=np.random.rand(3,1), marker='o')
+        cXs=np.array(threeDPositions2.loc[threeDPositions2.frame==f2,'cX'])
+        cYs=np.array(threeDPositions2.loc[threeDPositions2.frame==f2,'cY'])
+        minimumdp=np.array(threeDPositions2.loc[threeDPositions2.frame==f2,'mindp'])
+        color=np.array(threeDPositions2.loc[threeDPositions2.frame==f2,'color'])
+        colormapped=np.vstack((cXs,color)).T
+        ax.scatter(cXs*0.0052,cYs*0.0052,minimumdp*0.04*0.0052, c=colormapped, marker='o')
            
         plt.pause(0.02)
         fig.clear()
