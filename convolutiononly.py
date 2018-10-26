@@ -39,20 +39,20 @@ Y=ny*dely
 ##Set up Impulse Function##
 k=2*pi/lambda0 ##wave vector
 ###################################################Normalization########################################################
-averagedframei=0##this is only for normallization--whats appropriate for normalization?
-averagedframef=2005
+averagedframei=0        ##start frame for stacks used for normalization
+averagedframef=20       ##end frame for stacks used for normalization
 stackss=np.float32(np.zeros((1024,1280)))
-for f in range(averagedframei,averagedframef+1):
+for f in range(averagedframei,averagedframef+1): ##adding all the image together 
     f2="{:04d}".format(f)
     if os.path.exists(placeread.format((f2)))==False:
-        continue##if file dosnt exit 
+        continue            ##continue if file dosnt exit 
         else:
             read_path=placeread.format((f2))
             h = (tifffile.imread(read_path))
             h1 = np.array(h).astype(np.float32)
             stackss +=h1    
-averagestack=stackss/(len(range(averagedframei,averagedframef+1)))
-h1=h1/averagestack
+averagestack=stackss/(len(range(averagedframei,averagedframef+1)))##dividing sum of images by the number of images
+h1=h1/averagestack #Normalization step used to remove uneven background and DC term
 ###################################################Reconstruction##########################################################
 ## Convolution Steps
 H=np.fft.fft2(h1) ##fast 2d fourier trnasform of hologram
